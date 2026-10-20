@@ -150,6 +150,10 @@ function Start-DiscordProfile([string]$name, [bool]$minimized = $false) {
     # Electron ignores %APPDATA% on Windows, but Discord honors DISCORD_USER_DATA_DIR.
     $psi.EnvironmentVariables['DISCORD_USER_DATA_DIR'] = $roaming
     $psi.EnvironmentVariables['APPDATA'] = $roaming
+    # Vencord would otherwise keep separate settings per profile ("<profile>\VencordData"):
+    # point every profile at the main Vencord settings so they all share one set.
+    $vencordDir = if ($env:VENCORD_USER_DATA_DIR) { $env:VENCORD_USER_DATA_DIR } else { Join-Path $env:APPDATA 'Vencord' }
+    $psi.EnvironmentVariables['VENCORD_USER_DATA_DIR'] = $vencordDir
     [System.Diagnostics.Process]::Start($psi) | Out-Null
 }
 
