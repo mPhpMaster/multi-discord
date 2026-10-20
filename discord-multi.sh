@@ -131,6 +131,20 @@ real_user_data() {
     fi
 }
 
+# The main Vencord settings folder. Every profile points at it so they all share one set
+# (Vencord would otherwise keep separate settings in "<profile>/VencordData").
+vencord_dir() {
+    if [ -n "${VENCORD_USER_DATA_DIR:-}" ]; then
+        printf '%s' "$VENCORD_USER_DATA_DIR"
+    elif [ "$OS" = "Darwin" ]; then
+        printf '%s' "$HOME/Library/Application Support/Vencord"
+    elif [ "$DISCORD_KIND" = "flatpak" ]; then
+        printf '%s' "$HOME/.var/app/$DISCORD_CMD/config/Vencord"
+    else
+        printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/Vencord"
+    fi
+}
+
 # ---------------------------------------------------------------- prepare & launch
 
 prepare_profile() {
@@ -185,6 +199,8 @@ launch_profile() {
     prepare_profile "$name"
     local data="$PROFILES_DIR/$name/data"
     local log="$PROFILES_DIR/$name/discord.log"
+    local vencord
+    vencord="$(vencord_dir)"
     # No --multi-instance: the single-instance lock is per data folder, so a profile that is
     # already running is brought to the front instead of starting a second copy (which would
     # show the login screen because the first copy holds the saved login).
@@ -193,12 +209,19 @@ launch_profile() {
 
     # Electron ignores XDG/HOME overrides for some paths; Discord honors DISCORD_USER_DATA_DIR.
     if [ "$DISCORD_KIND" = "flatpak" ]; then
+        # The app's own ~/.var/app folder is always visible; only share a custom Vencord folder
+        local share_vencord=""
+        case "$vencord" in
+            "$HOME/.var/app/$DISCORD_CMD"/*) ;;
+            *) share_vencord="--filesystem=$vencord" ;;
+        esac
         # shellcheck disable=SC2086
         nohup flatpak run --filesystem="$data" --env=DISCORD_USER_DATA_DIR="$data" \
+            ${share_vencord:+"$share_vencord"} --env=VENCORD_USER_DATA_DIR="$vencord" \
             "$DISCORD_CMD" $args >"$log" 2>&1 &
     else
         # shellcheck disable=SC2086
-        DISCORD_USER_DATA_DIR="$data" XDG_CONFIG_HOME="$data" \
+        DISCORD_USER_DATA_DIR="$data" XDG_CONFIG_HOME="$data" VENCORD_USER_DATA_DIR="$vencord" \
             nohup "$DISCORD_CMD" $args >"$log" 2>&1 &
     fi
     disown 2>/dev/null || true

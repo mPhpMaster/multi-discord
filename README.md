@@ -105,6 +105,7 @@ Discord stores its login session in its data folder (`%APPDATA%\discord`, `~/.co
    **Portable mode:** put an empty file named `portable.txt` next to the script to keep profiles in a `profiles` folder beside it instead (e.g. on a USB stick). Profiles made by older versions next to the script are moved to the shared folder automatically once their Discord is closed.
 2. Launches the installed Discord with the `DISCORD_USER_DATA_DIR` environment variable pointed at that folder. Because every profile has its own folder, Discord's single-instance check works per profile: different profiles run side by side, and opening a profile that is already running (e.g. in the tray) just brings its window back — so its login is never lost to a duplicate copy. (Setting `APPDATA` alone does not work on Windows: Electron resolves the AppData folder through the Windows API, not the environment variable.)
 3. Sets `SKIP_HOST_UPDATE` and `SKIP_MODULE_UPDATE` in the profile's `settings.json`, because the updater is shared with your main Discord and would otherwise hang on **"Starting..."**. Updates still arrive through your main Discord install, which the profiles reuse.
+4. Points `VENCORD_USER_DATA_DIR` at your main [Vencord](https://vencord.dev) folder (`%APPDATA%\Vencord`, `~/.config/Vencord`, or `~/Library/Application Support/Vencord`), so every profile shares the same Vencord plugins, settings and themes. Set `VENCORD_USER_DATA_DIR` yourself to use a different folder.
 
 Deleting a profile removes only its folder (and its start-at-login entry).
 
