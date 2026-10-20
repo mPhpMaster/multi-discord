@@ -14,7 +14,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install NSIS
-        run: sudo apt-get update && sudo apt-get install -y nsis
+        # The runner's packages.microsoft.com source can fail (403) and break apt-get update; NSIS doesn't need it
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.*
+          sudo apt-get update && sudo apt-get install -y nsis
 
       - name: Build Windows installer
         run: |
