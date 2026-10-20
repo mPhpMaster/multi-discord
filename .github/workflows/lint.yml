@@ -1,0 +1,38 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  powershell:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run PSScriptAnalyzer
+        shell: powershell
+        run: |
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error
+          $results | Format-Table -AutoSize
+          if ($results) { exit 1 }
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        run: shellcheck -S warning discord-multi.sh
+
+      - name: Smoke test
+        run: |
+          export DISCORD_MULTI_PROFILES="$RUNNER_TEMP/profiles"
+          ./discord-multi.sh add Test
+          ./discord-multi.sh startup Test on
+          ./discord-multi.sh list | grep -q 'Test \*'
+          ./discord-multi.sh remove Test
+          ./discord-multi.sh about

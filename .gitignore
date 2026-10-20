@@ -1,0 +1,13 @@
+# Build output
+dist/
+*.zip
+
+# OS / editor
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# Local profiles (contain login sessions!)
+profiles/

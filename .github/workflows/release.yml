@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install NSIS
+        run: sudo apt-get update && sudo apt-get install -y nsis
+
+      - name: Build Windows installer
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          makensis -DVERSION="$VERSION" installer/DiscordMulti.nsi
+
+      - name: Package portable zip
+        run: |
+          mkdir -p dist/MultiDiscord
+          cp -r DiscordMulti.ps1 Start-DiscordMulti.bat discord-multi.sh assets README.md LICENSE dist/MultiDiscord/
+          chmod +x dist/MultiDiscord/discord-multi.sh
+          cd dist && zip -r "MultiDiscord-${GITHUB_REF_NAME}-portable.zip" MultiDiscord
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.exe
+            dist/*.zip
+          generate_release_notes: true
