@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-20
+
 ### Fixed
 - Vencord looked missing in profiles: each profile got its own empty Vencord settings, so every plugin was off. All profiles now share your main Vencord settings, plugins and themes (Windows, Linux, macOS)
 

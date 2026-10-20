@@ -9,7 +9,7 @@ Thanks for your interest in improving Multi Discord! Bug reports, ideas, and pul
 | `DiscordMulti.ps1` | Windows GUI (PowerShell + WinForms) |
 | `Start-DiscordMulti.bat` | Windows launcher (bypasses execution policy for this process only) |
 | `discord-multi.sh` | Linux & macOS version (bash) |
-| `installer/DiscordMulti.nsi` | Windows installer (NSIS). Build: `makensis -DVERSION=1.1.0 installer/DiscordMulti.nsi` |
+| `installer/DiscordMulti.nsi` | Windows installer (NSIS). Build: `makensis -DVERSION=1.1.1 installer/DiscordMulti.nsi` |
 | `assets/` | Logo (`logo.svg` is the source; `logo.png` / `logo.ico` are generated from it) |
 
 When you add a feature, try to add it to **both** versions so they stay in sync.

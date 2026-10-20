@@ -10,7 +10,7 @@ Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
 $AppName    = 'Discord Multi'
-$AppVersion = '1.1.0'
+$AppVersion = '1.1.1'
 $GitHubUser = 'mphpmaster'
 $RepoUrl    = 'https://github.com/mphpmaster/multi-discord'
 $DonateUrl  = 'https://paypal.me/mfsafadi'
