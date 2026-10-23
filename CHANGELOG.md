@@ -5,6 +5,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.5] - 2026-10-23
+
+### Added
+- **macOS app window** (`Discord Multi.app`, in the new `-mac.zip` download): profile list with running status, Launch, Stop, Launch All, Start at login, Desktop Shortcut, Rename, Delete. `./discord-multi.sh` opens the same window on macOS (`tui` for the old menu)
+- `stop <name>` and `status` commands (Linux, macOS)
+
 ## [1.1.4] - 2026-10-23
 
 ### Added

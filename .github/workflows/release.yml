@@ -28,7 +28,7 @@ jobs:
       - name: Package portable zip
         run: |
           mkdir -p dist/MultiDiscord
-          cp -r DiscordMulti.ps1 Start-DiscordMulti.bat discord-multi.sh assets README.md LICENSE dist/MultiDiscord/
+          cp -r DiscordMulti.ps1 Start-DiscordMulti.bat discord-multi.sh discord-multi-mac.js assets README.md LICENSE dist/MultiDiscord/
           chmod +x dist/MultiDiscord/discord-multi.sh
           cd dist && zip -r "MultiDiscord-${GITHUB_REF_NAME}-portable.zip" MultiDiscord
 
@@ -39,3 +39,21 @@ jobs:
             dist/*.exe
             dist/*.zip
           generate_release_notes: true
+
+  mac-app:
+    # The release above creates the release; this adds the macOS app to it
+    needs: release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Discord Multi.app
+        run: bash installer/build-mac-app.sh dist
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          ditto -c -k --keepParent "Discord Multi.app" "DiscordMulti-${GITHUB_REF_NAME}-mac.zip"
+          gh release upload "$GITHUB_REF_NAME" "DiscordMulti-${GITHUB_REF_NAME}-mac.zip" --clobber

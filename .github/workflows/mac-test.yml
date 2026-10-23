@@ -1,0 +1,121 @@
+name: macOS window test
+
+on:
+  push:
+    branches: [main]
+    paths: ['discord-multi.sh', 'discord-multi-mac.js', 'installer/build-mac-app.sh', '.github/workflows/mac-test.yml']
+  pull_request:
+    paths: ['discord-multi.sh', 'discord-multi-mac.js', 'installer/build-mac-app.sh', '.github/workflows/mac-test.yml']
+  workflow_dispatch:
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Command line
+        run: |
+          export DISCORD_MULTI_PROFILES="$RUNNER_TEMP/profiles"
+          ./discord-multi.sh add Work
+          ./discord-multi.sh add "Gaming Main"
+          ./discord-multi.sh startup Work on
+          # Pretend "Work" is running: Electron's SingletonLock points to host-<pid>
+          # Started in a subshell so the stopped process is reaped (not left as a zombie)
+          ( sleep 600 >/dev/null 2>&1 & echo $! > "$RUNNER_TEMP/pid" ); pid=$(cat "$RUNNER_TEMP/pid")
+          mkdir -p "$DISCORD_MULTI_PROFILES/Work/data/discord"
+          ln -s "$(hostname)-$pid" "$DISCORD_MULTI_PROFILES/Work/data/discord/SingletonLock"
+          ./discord-multi.sh status
+          ./discord-multi.sh status | grep -qx "$(printf 'Work	1	1')"
+          ./discord-multi.sh status | grep -qx "$(printf 'Gaming Main	0	0')"
+          ./discord-multi.sh stop Work
+          if kill -0 $pid 2>/dev/null; then echo "stop did not end the process"; exit 1; fi
+          ./discord-multi.sh startup Work off
+          # Running again for the screenshots
+          ( sleep 600 >/dev/null 2>&1 & echo $! > "$RUNNER_TEMP/pid" )
+          ln -sf "$(hostname)-$(cat "$RUNNER_TEMP/pid")" "$DISCORD_MULTI_PROFILES/Work/data/discord/SingletonLock"
+
+      - name: Build app
+        run: bash installer/build-mac-app.sh dist
+
+      - name: Window from Terminal
+        run: |
+          export DISCORD_MULTI_PROFILES="$RUNNER_TEMP/profiles"
+          echo "SSH_CONNECTION=${SSH_CONNECTION:-}"
+          DISCORD_MULTI_DEBUG=1 ./discord-multi.sh > "$RUNNER_TEMP/term.log" 2>&1 &
+          sleep 8
+          pgrep -fl osascript || echo "osascript not running"
+          osascript -e 'tell application "System Events" to get {name, name of every window} of (every process whose background only is false)' || true
+          screencapture -x "$RUNNER_TEMP/terminal-window.png" || true
+          cat "$RUNNER_TEMP/term.log"
+          pkill -f discord-multi-mac.js || true
+          sleep 1
+
+      - name: Window from the app
+        run: |
+          # The app uses the default profiles folder: put the test profiles there
+          mkdir -p "$HOME/Library/Application Support/Discord Multi"
+          mkdir -p "$HOME/Library/Application Support/Discord Multi/profiles"
+          cp -R "$RUNNER_TEMP/profiles/." "$HOME/Library/Application Support/Discord Multi/profiles/"
+          ln -sf "$(hostname)-$(cat "$RUNNER_TEMP/pid")" "$HOME/Library/Application Support/Discord Multi/profiles/Work/data/discord/SingletonLock"
+          open "dist/Discord Multi.app"
+          sleep 10
+          screencapture -x "$RUNNER_TEMP/app-window.png" || true
+          ls -la "$HOME/Library/Application Support/Discord Multi"
+          pgrep -fl "Discord Multi" || true
+          osascript -e 'tell application "System Events" to get name of every window of (every process whose name contains "Discord Multi")' || true
+
+      - name: Click through the app
+        run: |
+          P="$HOME/Library/Application Support/Discord Multi/profiles"
+          ui() { osascript -e "tell application \"System Events\" to tell process \"Discord Multi\" to $1"; }
+          ui 'get name of every UI element of window 1' || { echo "No accessibility access on this runner"; exit 0; }
+          # Select "Work" (running) and stop it
+          ui 'select row 2 of table 1 of scroll area 1 of window 1'
+          sleep 1
+          ui 'get value of static text 2 of window 1' || true
+          ui 'click button "Stop" of window 1'
+          sleep 3
+          if kill -0 "$(cat "$RUNNER_TEMP/pid")" 2>/dev/null; then echo "Stop did not end Work"; exit 1; fi
+          echo "Stop OK"
+          # Add a profile by typing its name and pressing the button
+          ui 'set value of text field 1 of window 1 to "From Window"'
+          ui 'click button "+  Add Account" of window 1'
+          sleep 2
+          [ -d "$P/From Window" ] && echo "Add OK" || { echo "Add failed"; ls "$P"; exit 1; }
+          # Start at login checkbox on the new (selected) profile
+          ui 'get {value, selected} of every row of table 1 of scroll area 1 of window 1' || true
+          ui 'get value of checkbox "Start at login" of window 1' || true
+          ui 'click checkbox "Start at login" of window 1'
+          sleep 2
+          ui 'get value of checkbox "Start at login" of window 1' || true
+          screencapture -x "$RUNNER_TEMP/after-checkbox.png" || true
+          ls -la ~/Library/LaunchAgents || true
+          bash "$HOME/Library/Application Support/Discord Multi/discord-multi.sh" status
+          log show --last 3m --style compact --predicate 'eventMessage CONTAINS "Discord Multi:"' 2>/dev/null | tail -10 || true
+          ls ~/Library/LaunchAgents | grep -q "com.discordmulti.From_Window" && echo "Start at login OK" || { echo "Start at login failed"; exit 1; }
+          sleep 3
+          screencapture -x "$RUNNER_TEMP/after-clicks.png" || true
+
+      - name: Crash reports
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/crash"
+          sleep 20
+          find ~/Library/Logs/DiagnosticReports /Library/Logs/DiagnosticReports -name "*.ips" -mmin -30 2>/dev/null | tee "$RUNNER_TEMP/crash/list.txt"
+          find ~/Library/Logs/DiagnosticReports /Library/Logs/DiagnosticReports -name "*.ips" -mmin -30 -exec cp {} "$RUNNER_TEMP/crash/" \; 2>/dev/null || true
+          log show --last 15m --style compact --predicate 'process == "osascript" OR process == "applet" OR process == "Discord Multi"' 2>/dev/null | grep -iE "exception|error|fault|terminat|assert" | tail -40 || true
+          for f in "$RUNNER_TEMP"/crash/*.ips; do
+            [ -f "$f" ] || continue
+            echo "=== $f"
+            python3 .github/mac-crash.py "$f"
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: |
+            ${{ runner.temp }}/*.png
+            ${{ runner.temp }}/term.log
+            ${{ runner.temp }}/crash

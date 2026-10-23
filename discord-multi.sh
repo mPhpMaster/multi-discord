@@ -3,14 +3,14 @@
 #  Discord Multi - run multiple Discord instances with different accounts
 #  Linux & macOS version. Each profile gets its own data folder.
 #
-#  Usage: ./discord-multi.sh            (interactive menu / GUI)
+#  Usage: ./discord-multi.sh            (window on macOS, dialogs / menu on Linux)
 #         ./discord-multi.sh help       (all commands)
 # ============================================================
 
 set -u
 
 APP_NAME="Discord Multi"
-VERSION="1.1.4"
+VERSION="1.1.5"
 GITHUB_USER="mphpmaster"
 REPO_URL="https://github.com/mphpmaster/multi-discord"
 DONATE_URL="https://paypal.me/mfsafadi"
@@ -249,17 +249,34 @@ add_profile() {
     info "Added profile: $name"
 }
 
-# True if Discord is running with this profile (Electron's SingletonLock -> "host-pid")
-profile_running() {
+# Prints the process id of the Discord running with this profile (Electron's SingletonLock -> "host-pid")
+profile_pid() {
     local lock target pid
     for lock in "$PROFILES_DIR/$1/data"/*/SingletonLock; do
         [ -L "$lock" ] || continue
         target="$(readlink "$lock" 2>/dev/null)" || continue
         pid="${target##*-}"
         case "$pid" in ''|*[!0-9]*) continue ;; esac
-        kill -0 "$pid" 2>/dev/null && return 0
+        kill -0 "$pid" 2>/dev/null && { printf '%s' "$pid"; return 0; }
     done
     return 1
+}
+
+profile_running() { profile_pid "$1" >/dev/null; }
+
+stop_profile() {
+    local name="$1" pid i
+    valid_name "$name" || die "Invalid profile name: $name"
+    profile_exists "$name" || die "Profile not found: $name"
+    pid="$(profile_pid "$name")" || { info "Not running: $name"; return 0; }
+    kill "$pid" 2>/dev/null
+    # Give Discord a few seconds to quit cleanly, then force it
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 0.5
+    done
+    kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
+    info "Stopped profile: $name"
 }
 
 # Move profiles created by older versions (next to the script) into the shared folder.
@@ -630,6 +647,13 @@ interactive() {
     done
 }
 
+# The macOS window (discord-multi-mac.js, next to this script) drives the commands below
+mac_window() {
+    local gui="$SCRIPT_DIR/discord-multi-mac.js"
+    [ -f "$gui" ] || die "Missing $gui"
+    exec osascript -l JavaScript "$gui" "$SCRIPT_PATH"
+}
+
 # ---------------------------------------------------------------- CLI
 
 usage() {
@@ -638,11 +662,14 @@ Discord Multi $VERSION - run multiple Discord accounts at once
 
 Usage: $(basename "$0") [command]
 
-  (no command)               Interactive menu (GUI if zenity / macOS dialogs are available)
+  (no command)               macOS: open the window. Linux: dialogs (zenity) or a terminal menu
+  tui                        Terminal menu (or dialogs) instead of the macOS window
   list                       List profiles (* = starts at login)
   add <name>                 Create a profile
   launch <name> [--minimized]  Launch a profile
   launch-all                 Launch every profile
+  stop <name>                Close a profile's Discord
+  status                     Profiles with running / start-at-login flags (tab-separated)
   startup <name> on|off      Start the profile when you log in
   shortcut <name>            Add an app-menu entry (Linux) / Desktop launcher (macOS)
   rename <old> <new>         Rename a profile (keeps its login and shortcuts)
@@ -659,7 +686,8 @@ Environment:
 Profiles are stored in:
   $PROFILES_DIR
 Create an empty portable.txt next to the script to keep them beside it instead.
-  DISCORD_MULTI_GUI=1               Force dialogs even when run from a terminal
+  DISCORD_MULTI_GUI=1               Linux / tui: force dialogs even when run from a terminal
+  DISCORD_MULTI_GUI=0               macOS: use the terminal menu instead of the window
 EOF
 }
 
@@ -669,7 +697,15 @@ cmd="${1:-}"
 [ -z "${DISCORD_MULTI_PROFILES:-}" ] && migrate_legacy_profiles
 
 case "$cmd" in
-    "")          interactive ;;
+    "")
+        # Over SSH there is no screen for the window
+        if [ "$OS" = "Darwin" ] && [ -z "${SSH_CONNECTION:-}" ] && [ -f "$SCRIPT_DIR/discord-multi-mac.js" ] \
+           && [ "${DISCORD_MULTI_GUI:-}" != "0" ]; then
+            mac_window
+        fi
+        interactive ;;
+    tui)         interactive ;;
+    gui)         [ "$OS" = "Darwin" ] || die "The window is for macOS; run without a command for dialogs."; mac_window ;;
     list)
         while IFS= read -r n; do
             [ -n "$n" ] || continue
@@ -683,6 +719,17 @@ EOF
         [ $# -ge 1 ] || die "Usage: launch <name> [--minimized]"
         if [ "${2:-}" = "--minimized" ]; then launch_profile "$1" yes; else launch_profile "$1"; fi ;;
     launch-all)  launch_all ;;
+    stop)        [ $# -ge 1 ] || die "Usage: stop <name>"; stop_profile "$1" ;;
+    status)
+        while IFS= read -r n; do
+            [ -n "$n" ] || continue
+            r=0; profile_running "$n" && r=1
+            a=0; startup_enabled "$n" && a=1
+            printf '%s\t%s\t%s\n' "$n" "$r" "$a"
+        done <<EOF
+$(list_profiles)
+EOF
+        ;;
     startup)     [ $# -ge 2 ] || die "Usage: startup <name> on|off"; set_startup "$1" "$2" ;;
     shortcut)    [ $# -ge 1 ] || die "Usage: shortcut <name>"; create_shortcut "$1" ;;
     rename)      [ $# -ge 2 ] || die "Usage: rename <old> <new>"; rename_profile "$1" "$2" ;;

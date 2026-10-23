@@ -1,6 +1,6 @@
 ; ============================================================
 ;  Discord Multi - Windows installer (NSIS 3)
-;  Build:  makensis -DVERSION=1.1.4 installer/DiscordMulti.nsi
+;  Build:  makensis -DVERSION=1.1.5 installer/DiscordMulti.nsi
 ;  Output: dist/DiscordMulti-Setup-<version>.exe
 ; ============================================================
 
@@ -11,7 +11,7 @@ Unicode true
 !include "LogicLib.nsh"
 
 !ifndef VERSION
-  !define VERSION "1.1.4"
+  !define VERSION "1.1.5"
 !endif
 
 !define APP_NAME     "Discord Multi"

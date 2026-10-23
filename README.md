@@ -22,7 +22,8 @@ No installation, no third-party binaries — just a small script that launches y
 
 - Create as many **profiles** as you want — each profile is a separate Discord account
 - Launch one profile, or **Launch All** at once
-- See which profiles are running (green dot) and **Stop** one with a click (Windows)
+- See which profiles are running (green dot) and **Stop** one with a click (Windows, macOS)
+- A real app window on **macOS** too (`Discord Multi.app`)
 - **Updates itself** when a new release is out (installed Windows copy)
 - **Rename** a profile without losing its login or shortcuts
 - **Start at login** per profile (opens minimized to the tray)
@@ -59,13 +60,23 @@ Optional:
 - Click **Add to Start Menu** so you can find Discord Multi from the Start menu.
 - Click **About** for the version, links and donation info.
 
-## Linux & macOS
+## macOS
+
+1. Download `DiscordMulti-vX.Y.Z-mac.zip` from the [latest release](https://github.com/mphpmaster/multi-discord/releases/latest) and unzip it.
+2. Move **Discord Multi.app** to your Applications folder.
+3. The first time, **right-click the app → Open → Open** (the app is not from the App Store, so macOS asks once). On macOS 15 or newer, if there is no Open button: try to open it, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
+
+The window works like the Windows one: add an account, **Launch** or **Stop** it, see which profiles are running (green dot), **Launch All**, **Start at login**, **Desktop Shortcut**, **Rename**, **Delete**.
+
+Prefer the script? `./discord-multi.sh` opens the same window (`./discord-multi.sh tui` for the terminal menu). All the commands below work on macOS too.
+
+## Linux & macOS (command line)
 
 **Requirements:** bash and the Discord desktop app. On Linux, [zenity](https://help.gnome.org/users/zenity/) is used for dialogs when available; otherwise a terminal menu is shown. Native packages (deb / rpm / tar.gz / AUR) and Flatpak are detected automatically.
 
 ```bash
 chmod +x discord-multi.sh
-./discord-multi.sh            # interactive menu
+./discord-multi.sh            # window (macOS) / dialogs or menu (Linux)
 ```
 
 Or use commands directly:
@@ -73,6 +84,7 @@ Or use commands directly:
 ```bash
 ./discord-multi.sh add Work
 ./discord-multi.sh launch Work
+./discord-multi.sh stop Work
 ./discord-multi.sh startup Work on      # start at login
 ./discord-multi.sh shortcut Work        # app-menu entry (Linux) / Desktop launcher (macOS)
 ./discord-multi.sh menu on              # add Discord Multi itself to your app menu
