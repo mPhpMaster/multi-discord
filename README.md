@@ -119,6 +119,7 @@ Deleting a profile removes only its folder (and its start-at-login entry).
 | "Discord is not installed" | Install the desktop app from [discord.com/download](https://discord.com/download), or set `DISCORD_BIN` (Linux / macOS). |
 | Script blocked by Windows | Use the `.bat` launcher — it runs the script with `-ExecutionPolicy Bypass` for that process only. |
 | Can't rename or delete a profile | Close that profile's Discord window first. |
+| A profile's icon is missing next to the clock (Windows 11) | Fixed in 1.1.2: Discord Multi keeps Discord's tray icons visible. On older versions, turn the icon on in **Settings → Personalization → Taskbar → Other system tray icons**. |
 | No dialogs on Linux | Install `zenity`, or use the terminal menu / commands. |
 
 ## Contributing

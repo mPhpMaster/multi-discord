@@ -5,6 +5,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-10-23
+
+### Fixed
+- Windows 11: a profile's tray icon (next to the clock) could be missing while your main Discord was open. Windows hides the new tray entry a profile gets by default; Discord Multi now keeps Discord's tray icons shown
+
 ## [1.1.1] - 2026-10-20
 
 ### Fixed

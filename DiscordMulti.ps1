@@ -10,7 +10,7 @@ Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
 $AppName    = 'Discord Multi'
-$AppVersion = '1.1.1'
+$AppVersion = '1.1.2'
 $GitHubUser = 'mphpmaster'
 $RepoUrl    = 'https://github.com/mphpmaster/multi-discord'
 $DonateUrl  = 'https://paypal.me/mfsafadi'
@@ -157,6 +157,31 @@ function Start-DiscordProfile([string]$name, [bool]$minimized = $false) {
     [System.Diagnostics.Process]::Start($psi) | Out-Null
 }
 
+# ---- Keep every Discord tray icon visible (Windows 11) ----
+# Windows 11 remembers "show/hide" per tray-icon entry. A profile runs the same Discord.exe as the
+# main Discord, so while the main one is open the profile's icon gets a new entry, which Windows
+# hides by default (and with the hidden-icons menu turned off it disappears completely).
+# Mark Discord's entries as shown. Only Discord's own entries are touched.
+function Set-DiscordTrayIconsVisible {
+    $base = 'HKCU:\Control Panel\NotifyIconSettings'
+    if (-not (Test-Path -LiteralPath $base)) { return }   # Windows 10 has no such setting
+    foreach ($key in @(Get-ChildItem -LiteralPath $base -ErrorAction SilentlyContinue)) {
+        $props = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue
+        if (-not $props -or -not $props.ExecutablePath) { continue }
+        $leaf = [System.IO.Path]::GetFileName([string]$props.ExecutablePath)
+        if ($leaf -match '^Discord(PTB|Canary)?\.exe$' -and $props.IsPromoted -ne 1) {
+            Set-ItemProperty -LiteralPath $key.PSPath -Name 'IsPromoted' -Value 1 -Type DWord -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+# Discord adds its tray icon some seconds after starting: keep checking for a while
+$script:TrayWatchUntil = [DateTime]::MinValue
+function Start-TrayWatch([int]$seconds = 120) {
+    $script:TrayWatchUntil = (Get-Date).AddSeconds($seconds)
+    if ($script:trayTimer) { $script:trayTimer.Start() }
+}
+
 function Save-ProfileShortcut([string]$lnkPath, [string]$name, [bool]$minimized) {
     $shell = New-Object -ComObject WScript.Shell
     $lnk = $shell.CreateShortcut($lnkPath)
@@ -225,6 +250,11 @@ if ($ProfileName) {
     # Get-ProfileDir also finds profiles not moved yet (still in use)
     if (-not (Test-Path -LiteralPath (Get-ProfileDir $ProfileName))) { exit }
     Start-DiscordProfile $ProfileName $Minimized.IsPresent
+    # Wait for Discord's tray icon and make sure Windows shows it (this window is hidden)
+    for ($i = 0; $i -lt 40; $i++) {
+        Start-Sleep -Seconds 3
+        Set-DiscordTrayIconsVisible
+    }
     exit
 }
 
@@ -341,12 +371,13 @@ $addAction = {
 $btnAdd.Add_Click($addAction)
 $txt.Add_KeyDown({ if ($_.KeyCode -eq 'Enter') { $_.SuppressKeyPress = $true; & $addAction } })
 
-$btnRun.Add_Click({ $n = Get-Selected; if ($n) { Start-DiscordProfile $n } })
-$list.Add_DoubleClick({ if ($list.SelectedItem) { Start-DiscordProfile ([string]$list.SelectedItem) } })
+$btnRun.Add_Click({ $n = Get-Selected; if ($n) { Start-DiscordProfile $n; Start-TrayWatch } })
+$list.Add_DoubleClick({ if ($list.SelectedItem) { Start-DiscordProfile ([string]$list.SelectedItem); Start-TrayWatch } })
 
 $btnRunAll.Add_Click({
     if ($list.Items.Count -eq 0) { Show-Msg 'No profiles yet.' 'Warning'; return }
     foreach ($n in @($list.Items)) { Start-DiscordProfile ([string]$n); Start-Sleep -Milliseconds 1500 }
+    Start-TrayWatch
 })
 
 $btnLnk.Add_Click({ $n = Get-Selected; if ($n) { New-ProfileShortcut $n } })
@@ -551,6 +582,15 @@ if ($notMoved.Count -gt 0) {
     $hint.Text = 'Some profiles move to the shared folder once their Discord is closed.'
     $hint.ForeColor = [System.Drawing.Color]::FromArgb(250, 168, 26)
 }
+
+$script:trayTimer = New-Object System.Windows.Forms.Timer
+$script:trayTimer.Interval = 3000
+$script:trayTimer.Add_Tick({
+    Set-DiscordTrayIconsVisible
+    if ((Get-Date) -gt $script:TrayWatchUntil) { $script:trayTimer.Stop() }
+})
+# Also fix icons of profiles that are already running
+Set-DiscordTrayIconsVisible
 
 Refresh-List
 [void]$form.ShowDialog()
