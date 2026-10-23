@@ -16,12 +16,13 @@
   <a href="https://paypal.me/mfsafadi"><img src="https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white" alt="Donate with PayPal"></a>
 </p>
 
-No installation, no patching of Discord, no third-party binaries — just a small script that launches your installed Discord with a separate data folder per account.
+No installation, no third-party binaries — just a small script that launches your installed Discord with a separate data folder per account. On Windows it makes one small change to Discord's own files so each profile can have its own tray icon; it has no effect on your main Discord.
 
 ## Features
 
 - Create as many **profiles** as you want — each profile is a separate Discord account
 - Launch one profile, or **Launch All** at once
+- See which profiles are running (green dot) and **Stop** one with a click (Windows)
 - **Rename** a profile without losing its login or shortcuts
 - **Start at login** per profile (opens minimized to the tray)
 - **Desktop shortcut** / app-menu entry per profile
@@ -119,7 +120,7 @@ Deleting a profile removes only its folder (and its start-at-login entry).
 | "Discord is not installed" | Install the desktop app from [discord.com/download](https://discord.com/download), or set `DISCORD_BIN` (Linux / macOS). |
 | Script blocked by Windows | Use the `.bat` launcher — it runs the script with `-ExecutionPolicy Bypass` for that process only. |
 | Can't rename or delete a profile | Close that profile's Discord window first. |
-| A profile's icon is missing next to the clock (Windows 11) | Fixed in 1.1.2: Discord Multi keeps Discord's tray icons visible. On older versions, turn the icon on in **Settings → Personalization → Taskbar → Other system tray icons**. |
+| A profile's icon is missing next to the clock | Fixed in 1.1.3: each profile gets its own tray icon. Restart profiles that were already open so their icon appears. |
 | No dialogs on Linux | Install `zenity`, or use the terminal menu / commands. |
 
 ## Contributing

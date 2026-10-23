@@ -10,7 +10,7 @@
 set -u
 
 APP_NAME="Discord Multi"
-VERSION="1.1.2"
+VERSION="1.1.3"
 GITHUB_USER="mphpmaster"
 REPO_URL="https://github.com/mphpmaster/multi-discord"
 DONATE_URL="https://paypal.me/mfsafadi"

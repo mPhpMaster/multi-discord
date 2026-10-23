@@ -5,6 +5,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-10-23
+
+### Added
+- **Stop** button and a running / not running status for each profile (green dot in the list) (Windows)
+
+### Fixed
+- A profile still got no tray icon (next to the clock) while another Discord was open. Discord registers its icon with one fixed ID, and Windows allows only one icon per ID; each profile now gets its own tray icon (Windows)
+
 ## [1.1.2] - 2026-10-23
 
 ### Fixed

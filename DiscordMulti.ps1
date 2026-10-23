@@ -10,7 +10,7 @@ Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
 $AppName    = 'Discord Multi'
-$AppVersion = '1.1.2'
+$AppVersion = '1.1.3'
 $GitHubUser = 'mphpmaster'
 $RepoUrl    = 'https://github.com/mphpmaster/multi-discord'
 $DonateUrl  = 'https://paypal.me/mfsafadi'
@@ -98,6 +98,71 @@ function Get-DiscordExe {
     return $null
 }
 
+# Discord creates its tray icon with one fixed GUID, and Windows shows only one icon per GUID,
+# so every instance after the first gets no tray icon. Patch Discord's core module (same length,
+# in place) to use the GUID from DISCORD_MULTI_TRAY_GUID when set; without it nothing changes.
+# Discord updates install a fresh copy, so this runs before every launch.
+$TrayCodeOld = 'IS_WINDOWS||IS_MACOS?new electron_1.Tray(icon,TrayGuidByChannel[buildInfo.releaseChannel]):new electron_1.Tray(icon)'
+$TrayCodeNew = 'new electron_1.Tray(icon,process.env.DISCORD_MULTI_TRAY_GUID||TrayGuidByChannel[buildInfo.releaseChannel])'
+$TrayCodeNew = $TrayCodeNew.PadRight($TrayCodeOld.Length)
+
+function Repair-DiscordTray([string]$exe) {
+    $latin1 = [System.Text.Encoding]::GetEncoding(28591)
+    $asars = Get-ChildItem (Join-Path (Split-Path $exe) 'modules') -Recurse -Filter 'core.asar' -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match '\\discord_desktop_core[^\\]*\\discord_desktop_core\\core\.asar$' }
+    foreach ($asar in $asars) {
+        try {
+            $text = $latin1.GetString([System.IO.File]::ReadAllBytes($asar.FullName))
+            $i = $text.IndexOf($TrayCodeOld, [System.StringComparison]::Ordinal)
+            if ($i -lt 0) { continue }   # already patched, or a Discord version with different code
+            $fs = [System.IO.File]::Open($asar.FullName, 'Open', 'ReadWrite', 'ReadWrite')
+            try {
+                $bytes = $latin1.GetBytes($TrayCodeNew)
+                $fs.Position = $i
+                $fs.Write($bytes, 0, $bytes.Length)
+            } finally { $fs.Close() }
+        } catch { }   # not fatal: Discord still runs, only the extra tray icon is missing
+    }
+}
+
+# A fixed GUID per profile, so Windows remembers each icon's taskbar setting
+function Get-ProfileTrayGuid([string]$name) {
+    $md5 = [System.Security.Cryptography.MD5]::Create()
+    $hash = $md5.ComputeHash([System.Text.Encoding]::UTF8.GetBytes("DiscordMulti:" + $name.ToLowerInvariant()))
+    return ([guid]::new($hash)).ToString()
+}
+
+# ---- Running instances: Discord's child processes carry --user-data-dir=<profile data folder> ----
+function Get-RunningProfiles {
+    $roots = @{}
+    $prefix = (Join-Path $Root '').ToLowerInvariant()
+    $legacy = (Join-Path $LegacyRoot '').ToLowerInvariant()
+    $procs = @(Get-CimInstance Win32_Process -Filter "Name LIKE 'Discord%.exe'" -ErrorAction SilentlyContinue)
+    $alive = @{}
+    foreach ($p in $procs) { $alive[[int]$p.ProcessId] = $true }
+    foreach ($p in $procs) {
+        # Either --user-data-dir="C:\a b" or "--user-data-dir=C:\a b"
+        if ($p.CommandLine -match '--user-data-dir="([^"]+)"' -or $p.CommandLine -match '"--user-data-dir=([^"]+)"' -or
+            $p.CommandLine -match '--user-data-dir=(\S+)') {
+            $dir = $Matches[1].ToLowerInvariant()
+        } else { continue }
+        foreach ($base in @($prefix, $legacy)) {
+            if (-not $dir.StartsWith($base)) { continue }
+            $name = $dir.Substring($base.Length).Split('\')[0]
+            # The main process is the parent of the child that carries the flag
+            if ($alive[[int]$p.ParentProcessId]) { $roots[$name] = [int]$p.ParentProcessId }
+        }
+    }
+    return $roots   # lower-case profile name -> main process id
+}
+
+function Stop-DiscordProfile([string]$name) {
+    $running = Get-RunningProfiles
+    $procId = $running[$name.ToLowerInvariant()]
+    if (-not $procId) { return }
+    & taskkill.exe /PID $procId /T /F 2>&1 | Out-Null
+}
+
 function Show-Msg($text, $icon = 'Information') {
     [System.Windows.Forms.MessageBox]::Show($text, 'Discord Multi', 'OK', $icon) | Out-Null
 }
@@ -154,6 +219,9 @@ function Start-DiscordProfile([string]$name, [bool]$minimized = $false) {
     # point every profile at the main Vencord settings so they all share one set.
     $vencordDir = if ($env:VENCORD_USER_DATA_DIR) { $env:VENCORD_USER_DATA_DIR } else { Join-Path $env:APPDATA 'Vencord' }
     $psi.EnvironmentVariables['VENCORD_USER_DATA_DIR'] = $vencordDir
+    # Own tray icon per profile (see Repair-DiscordTray)
+    Repair-DiscordTray $exe
+    $psi.EnvironmentVariables['DISCORD_MULTI_TRAY_GUID'] = Get-ProfileTrayGuid $name
     [System.Diagnostics.Process]::Start($psi) | Out-Null
 }
 
@@ -280,11 +348,39 @@ $form.Controls.Add($lbl)
 
 $list = New-Object System.Windows.Forms.ListBox
 $list.Location = New-Object System.Drawing.Point(15, 40)
-$list.Size = New-Object System.Drawing.Size(250, 340)
+$list.Size = New-Object System.Drawing.Size(250, 310)
 $list.BackColor = [System.Drawing.Color]::FromArgb(47, 49, 54)
 $list.ForeColor = [System.Drawing.Color]::White
 $list.BorderStyle = 'FixedSingle'
+$list.DrawMode = 'OwnerDrawFixed'
+$list.ItemHeight = 22
 $form.Controls.Add($list)
+
+$status = New-Object System.Windows.Forms.Label
+$status.Location = New-Object System.Drawing.Point(15, 356)
+$status.Size = New-Object System.Drawing.Size(250, 24)
+$form.Controls.Add($status)
+
+# Lower-case names of running profiles -> main process id; refreshed by a timer
+$script:running = @{}
+$dotOn  = [System.Drawing.Color]::FromArgb(35, 165, 89)
+$dotOff = [System.Drawing.Color]::FromArgb(116, 127, 141)
+
+# Each profile gets a green (running) or gray (stopped) dot
+$list.Add_DrawItem({
+    param($s, $e)
+    if ($e.Index -lt 0) { return }
+    $e.DrawBackground()
+    $name = [string]$list.Items[$e.Index]
+    $on = $script:running.ContainsKey($name.ToLowerInvariant())
+    $g = $e.Graphics
+    $g.SmoothingMode = 'AntiAlias'
+    $brush = New-Object System.Drawing.SolidBrush($(if ($on) { $dotOn } else { $dotOff }))
+    $g.FillEllipse($brush, $e.Bounds.X + 6, $e.Bounds.Y + 6, 10, 10)
+    $brush.Dispose()
+    $textRect = New-Object System.Drawing.Rectangle(($e.Bounds.X + 22), $e.Bounds.Y, ($e.Bounds.Width - 22), $e.Bounds.Height)
+    [System.Windows.Forms.TextRenderer]::DrawText($g, $name, $e.Font, $textRect, [System.Drawing.Color]::White, [System.Windows.Forms.TextFormatFlags]'VerticalCenter, EndEllipsis')
+})
 
 function Refresh-List {
     $list.Items.Clear()
@@ -317,6 +413,10 @@ $red     = [System.Drawing.Color]::FromArgb(218, 55, 60)
 $green   = [System.Drawing.Color]::FromArgb(35, 165, 89)
 
 $btnRun    = New-Btn 'Launch'            40  $green
+$btnRun.Width = 73
+$btnStop   = New-Btn 'Stop'              40  $red
+$btnStop.Left = 357
+$btnStop.Width = 73
 $btnRunAll = New-Btn 'Launch All'        78  $blurple
 $btnLnk    = New-Btn 'Desktop Shortcut'  116 $gray
 $btnStart  = New-Btn 'Add to Start Menu' 154 $gray
@@ -370,6 +470,41 @@ $addAction = {
 }
 $btnAdd.Add_Click($addAction)
 $txt.Add_KeyDown({ if ($_.KeyCode -eq 'Enter') { $_.SuppressKeyPress = $true; & $addAction } })
+
+# ---- Running status ----
+function Update-Status {
+    $on = $list.SelectedItem -and $script:running.ContainsKey(([string]$list.SelectedItem).ToLowerInvariant())
+    $btnStop.Enabled = [bool]$on
+    $btnStop.BackColor = if ($on) { $red } else { $gray }
+    if (-not $list.SelectedItem) {
+        $status.Text = ''
+    } elseif ($on) {
+        $status.Text = 'Status: Running'
+        $status.ForeColor = $dotOn
+    } else {
+        $status.Text = 'Status: Not running'
+        $status.ForeColor = [System.Drawing.Color]::FromArgb(185, 187, 190)
+    }
+}
+
+function Update-Running {
+    $script:running = Get-RunningProfiles
+    $list.Invalidate()
+    Update-Status
+}
+
+$btnStop.Add_Click({
+    $n = Get-Selected; if (-not $n) { return }
+    Stop-DiscordProfile $n
+    Start-Sleep -Milliseconds 500
+    Update-Running
+})
+
+$statusTimer = New-Object System.Windows.Forms.Timer
+$statusTimer.Interval = 2000
+$statusTimer.Add_Tick({ Update-Running })
+$form.Add_Shown({ Update-Running; $statusTimer.Start() })
+$form.Add_FormClosed({ $statusTimer.Stop() })
 
 $btnRun.Add_Click({ $n = Get-Selected; if ($n) { Start-DiscordProfile $n; Start-TrayWatch } })
 $list.Add_DoubleClick({ if ($list.SelectedItem) { Start-DiscordProfile ([string]$list.SelectedItem); Start-TrayWatch } })
@@ -499,6 +634,7 @@ $list.Add_SelectedIndexChanged({
         $chkStartup.Checked = $false
     }
     $script:updatingStartup = $false
+    Update-Status
 })
 
 $chkStartup.Add_CheckedChanged({
