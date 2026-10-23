@@ -5,6 +5,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-10-23
+
+### Added
+- **Automatic updates:** on start the installed app checks GitHub for a new release, installs it silently and opens again. Portable copies show a download link instead (Windows)
+
 ## [1.1.3] - 2026-10-23
 
 ### Added

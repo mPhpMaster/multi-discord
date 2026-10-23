@@ -10,7 +10,7 @@ Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
 $AppName    = 'Discord Multi'
-$AppVersion = '1.1.3'
+$AppVersion = '1.1.4'
 $GitHubUser = 'mphpmaster'
 $RepoUrl    = 'https://github.com/mphpmaster/multi-discord'
 $DonateUrl  = 'https://paypal.me/mfsafadi'
@@ -324,6 +324,74 @@ if ($ProfileName) {
         Set-DiscordTrayIconsVisible
     }
     exit
+}
+
+# ---- Updates: check GitHub for a newer release on start ----
+$ReleasesApi = 'https://api.github.com/repos/mphpmaster/multi-discord/releases/latest'
+
+# Only the installed copy updates itself; a portable or cloned copy just shows a notice
+function Test-InstalledCopy {
+    $dir = (Get-ItemProperty -LiteralPath 'HKCU:\Software\DiscordMulti' -Name InstallDir -ErrorAction SilentlyContinue).InstallDir
+    if (-not $dir) { return $false }
+    return $dir.TrimEnd('\') -ieq $PSScriptRoot.TrimEnd('\')
+}
+
+# Install the downloaded setup silently, then open the app again. Runs in its own hidden
+# PowerShell so it keeps going after this window closes.
+function Start-UpdateInstall([string]$setup) {
+    $q = { param($s) "'" + $s.Replace("'", "''") + "'" }
+    $psExe = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+    $appArgs = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$PSCommandPath`""
+    $cmd = "Start-Process -FilePath $(& $q $setup) -ArgumentList '/S' -Wait; " +
+           "Remove-Item -LiteralPath $(& $q $setup) -Force -ErrorAction SilentlyContinue; " +
+           "Start-Process -FilePath $(& $q $psExe) -ArgumentList $(& $q $appArgs)"
+    $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($cmd))
+    Start-Process -FilePath $psExe -ArgumentList "-NoProfile -WindowStyle Hidden -EncodedCommand $encoded" -WindowStyle Hidden
+}
+
+# Runs in the background once the window is shown; any failure (offline, rate limit) is ignored
+function Start-UpdateCheck {
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+    $script:updateClient = New-Object System.Net.WebClient
+    $script:updateClient.Headers['User-Agent'] = "DiscordMulti/$AppVersion"
+    $script:updateClient.Add_DownloadStringCompleted({
+        param($s, $e)
+        if ($e.Error -or $e.Cancelled) { return }
+        try {
+            $rel = $e.Result | ConvertFrom-Json
+            $latest = [version]($rel.tag_name -replace '^v', '')
+            if ($latest -le [version]$AppVersion) { return }
+        } catch { return }
+        $asset = @($rel.assets | Where-Object { $_.name -like 'DiscordMulti-Setup-*.exe' }) | Select-Object -First 1
+        $hint.ForeColor = [System.Drawing.Color]::FromArgb(250, 168, 26)
+        if (-not (Test-InstalledCopy) -or -not $asset) {
+            $hint.Text = "Version $latest is available - click here to download it."
+            $hint.Cursor = 'Hand'
+            $script:releasePage = [string]$rel.html_url
+            $hint.Add_Click({ Start-Process $script:releasePage })
+            return
+        }
+        $hint.Text = "Downloading update $latest..."
+        $setup = Join-Path $env:TEMP $asset.name
+        $script:updateSetup = $setup
+        $script:updateVersion = $latest
+        $dl = New-Object System.Net.WebClient
+        $dl.Headers['User-Agent'] = "DiscordMulti/$AppVersion"
+        $dl.Add_DownloadFileCompleted({
+            param($s2, $e2)
+            if ($e2.Error -or $e2.Cancelled -or -not (Test-Path -LiteralPath $script:updateSetup)) {
+                $hint.Text = 'Could not download the update. It will try again next time.'
+                return
+            }
+            $hint.Text = "Installing update $script:updateVersion..."
+            $form.Refresh()
+            Start-UpdateInstall $script:updateSetup
+            $form.Close()
+        })
+        $script:updateDownload = $dl
+        $dl.DownloadFileAsync([uri]$asset.browser_download_url, $setup)
+    })
+    $script:updateClient.DownloadStringAsync([uri]$ReleasesApi)
 }
 
 # ======================= UI =======================
@@ -727,6 +795,8 @@ $script:trayTimer.Add_Tick({
 })
 # Also fix icons of profiles that are already running
 Set-DiscordTrayIconsVisible
+
+$form.Add_Shown({ Start-UpdateCheck })
 
 Refresh-List
 [void]$form.ShowDialog()

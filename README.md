@@ -23,6 +23,7 @@ No installation, no third-party binaries — just a small script that launches y
 - Create as many **profiles** as you want — each profile is a separate Discord account
 - Launch one profile, or **Launch All** at once
 - See which profiles are running (green dot) and **Stop** one with a click (Windows)
+- **Updates itself** when a new release is out (installed Windows copy)
 - **Rename** a profile without losing its login or shortcuts
 - **Start at login** per profile (opens minimized to the tray)
 - **Desktop shortcut** / app-menu entry per profile
